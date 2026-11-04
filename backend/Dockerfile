@@ -16,6 +16,13 @@ FROM dunglas/frankenphp:1-php8.5-alpine
 
 RUN install-php-extensions pdo_pgsql intl opcache
 
+# The image ships frankenphp with cap_net_bind_service (to bind ports < 1024).
+# Hosts that drop that capability, like Render, then refuse to exec the binary
+# ("Operation not permitted", exit 126). We listen on $PORT (> 1024), so remove it.
+RUN apk add --no-cache libcap \
+    && setcap -r /usr/local/bin/frankenphp \
+    && apk del libcap
+
 ENV APP_ENV=production \
     APP_DEBUG=false \
     LOG_CHANNEL=stderr \
@@ -28,7 +35,10 @@ COPY docker/entrypoint.sh /usr/local/bin/entrypoint
 
 RUN php artisan package:discover --ansi \
     && chmod +x /usr/local/bin/entrypoint \
-    && chown -R www-data:www-data storage bootstrap/cache
+    && chown -R www-data:www-data storage bootstrap/cache /data/caddy /config/caddy
+
+# Run unprivileged: Laravel only writes to storage/ and bootstrap/cache, Caddy to /data and /config.
+USER www-data
 
 EXPOSE 8080
 ENTRYPOINT ["entrypoint"]
