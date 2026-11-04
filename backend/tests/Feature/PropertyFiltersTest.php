@@ -47,6 +47,18 @@ class PropertyFiltersTest extends TestCase
     }
 
     #[Test]
+    public function pagination_links_use_https_behind_a_tls_terminating_proxy(): void
+    {
+        Property::factory()->count(3)->create();
+
+        $response = $this->withHeaders(['X-Forwarded-Proto' => 'https', 'X-Forwarded-Port' => '443'])
+            ->getJson('/api/properties?per_page=1')
+            ->assertOk();
+
+        $this->assertStringStartsWith('https://', $response->json('links.next'));
+    }
+
+    #[Test]
     public function it_orders_newest_listings_first(): void
     {
         $old = Property::factory()->create(['listed_at' => now()->subDays(30)]);

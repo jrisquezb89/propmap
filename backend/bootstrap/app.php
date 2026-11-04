@@ -13,7 +13,10 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        //
+        // Render terminates TLS at its load balancer and forwards plain HTTP with
+        // X-Forwarded-* headers. Trust them so generated URLs (pagination links) are https.
+        // Safe here: the container is only reachable through Render's proxy.
+        $middleware->trustProxies(at: '*');
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(
