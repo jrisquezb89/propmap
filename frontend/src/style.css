@@ -1,0 +1,254 @@
+@import 'tailwindcss';
+
+/* Class-based dark mode, so the user's choice can override the OS setting. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * Semantic color tokens. Components use these (bg-surface, text-fg, ring-line...)
+ * instead of raw palette colors, so the dark theme is one block of overrides
+ * below rather than a dark: variant on every element.
+ */
+@theme {
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+
+  --color-canvas: var(--color-slate-50);
+  --color-surface: var(--color-white);
+  --color-muted: var(--color-slate-100);
+  --color-skeleton: var(--color-slate-200);
+  --color-line: var(--color-slate-200);
+  --color-line-strong: var(--color-slate-300);
+
+  --color-fg: var(--color-slate-900);
+  --color-fg-soft: var(--color-slate-700);
+  --color-fg-muted: var(--color-slate-600);
+  --color-fg-subtle: var(--color-slate-400);
+
+  --color-accent: var(--color-teal-700);
+  --color-accent-strong: var(--color-teal-900);
+  --color-accent-soft: var(--color-teal-50);
+  --color-accent-line: var(--color-teal-100);
+  --color-accent-ring: var(--color-accent-ring);
+}
+
+.dark {
+  --color-canvas: #0b1220;
+  --color-surface: var(--color-slate-900);
+  --color-muted: var(--color-slate-800);
+  --color-skeleton: var(--color-slate-800);
+  --color-line: var(--color-slate-800);
+  --color-line-strong: var(--color-slate-700);
+
+  --color-fg: var(--color-slate-50);
+  --color-fg-soft: var(--color-slate-300);
+  --color-fg-muted: var(--color-slate-400);
+  --color-fg-subtle: var(--color-slate-500);
+
+  --color-accent: var(--color-teal-400);
+  --color-accent-strong: var(--color-teal-200);
+  --color-accent-soft: color-mix(in oklab, var(--color-teal-500) 12%, transparent);
+  --color-accent-line: color-mix(in oklab, var(--color-teal-500) 25%, transparent);
+  --color-accent-ring: var(--color-teal-400);
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    color: var(--color-fg);
+    background: var(--color-canvas);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-accent-ring);
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  .skip-link {
+    position: absolute;
+    left: 0.75rem;
+    top: -3rem;
+    z-index: 50;
+    border-radius: 0.5rem;
+    background: var(--color-fg);
+    padding: 0.5rem 0.875rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--color-surface);
+    transition: top 0.15s;
+  }
+  .skip-link:focus {
+    top: 0.75rem;
+  }
+
+  /* Form controls */
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    min-width: 0;
+  }
+  .field-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--color-fg-muted);
+  }
+  .control {
+    height: 2.5rem;
+    border-radius: 0.5rem;
+    border: 1px solid var(--color-line-strong);
+    background-color: var(--color-surface);
+    padding: 0 2rem 0 0.75rem;
+    font-size: 0.875rem;
+    color: var(--color-fg);
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%2364748b'%3E%3Cpath fill-rule='evenodd' d='M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z' clip-rule='evenodd'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.5rem center;
+    background-size: 1.1rem;
+    cursor: pointer;
+  }
+  .control:hover {
+    border-color: var(--color-fg-subtle);
+  }
+
+  /* Segmented radio group (bedrooms) */
+  .segment {
+    position: relative;
+    cursor: pointer;
+  }
+  .segment-label {
+    display: block;
+    min-width: 2.5rem;
+    border-radius: 0.4rem;
+    padding: 0.4375rem 0.625rem;
+    line-height: 1.25rem;
+    text-align: center;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--color-fg-soft);
+    transition: background-color 0.15s, color 0.15s;
+  }
+  .segment:hover .segment-label {
+    color: var(--color-fg);
+  }
+  .peer:checked + .segment-label {
+    background: var(--color-surface);
+    color: var(--color-fg);
+    font-weight: 600;
+    box-shadow: 0 1px 2px rgb(15 23 42 / 0.12);
+  }
+  /* In dark mode the selected segment is raised (lighter), not sunk. */
+  .dark .peer:checked + .segment-label {
+    background: var(--color-slate-600);
+    box-shadow: none;
+  }
+  .peer:focus-visible + .segment-label {
+    outline: 2px solid var(--color-accent-ring);
+    outline-offset: 1px;
+  }
+
+  /* Buttons */
+  .btn-primary,
+  .btn-secondary,
+  .btn-ghost {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 2.5rem;
+    border-radius: 0.5rem;
+    padding: 0 1rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    transition: background-color 0.15s, color 0.15s;
+  }
+  .btn-primary {
+    background: var(--color-teal-700);
+    color: white;
+  }
+  .btn-primary:hover {
+    background: var(--color-teal-800);
+  }
+  .btn-secondary {
+    background: var(--color-surface);
+    color: var(--color-fg);
+    box-shadow: inset 0 0 0 1px var(--color-line-strong);
+  }
+  .btn-secondary:hover {
+    background: var(--color-muted);
+  }
+  .btn-secondary:disabled {
+    opacity: 0.6;
+    cursor: progress;
+  }
+  .btn-ghost {
+    color: var(--color-accent);
+    padding: 0 0.5rem;
+  }
+  .btn-ghost:hover {
+    background: var(--color-accent-soft);
+  }
+
+  /* Map pins (Advanced Marker content) */
+  .price-pin {
+    position: relative;
+    border-radius: 9999px;
+    background: var(--color-surface);
+    padding: 0.25rem 0.55rem;
+    font: 600 0.8125rem/1.2 var(--font-sans);
+    color: var(--color-fg);
+    white-space: nowrap;
+    box-shadow:
+      0 0 0 1px rgb(15 23 42 / 0.1),
+      0 2px 6px rgb(15 23 42 / 0.18);
+    transition:
+      transform 0.15s ease,
+      background-color 0.15s ease,
+      color 0.15s ease;
+  }
+  .price-pin::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    bottom: -4px;
+    width: 8px;
+    height: 8px;
+    background: inherit;
+    transform: translateX(-50%) rotate(45deg);
+    box-shadow: 1px 1px 0 rgb(15 23 42 / 0.08);
+  }
+  .price-pin.is-hovered,
+  .price-pin.is-selected {
+    background: var(--color-teal-700);
+    color: white;
+    transform: scale(1.12);
+  }
+  /* Dark map: pins need a light edge and a brighter active state to stand out. */
+  .dark .price-pin {
+    box-shadow:
+      0 0 0 1px rgb(255 255 255 / 0.14),
+      0 2px 8px rgb(0 0 0 / 0.5);
+  }
+  .dark .price-pin.is-hovered,
+  .dark .price-pin.is-selected {
+    background: var(--color-teal-500);
+    color: var(--color-slate-950);
+  }
+  .cluster-pin {
+    display: grid;
+    place-items: center;
+    border-radius: 9999px;
+    background: var(--color-teal-700);
+    color: white;
+    font: 700 0.8125rem/1 var(--font-sans);
+    box-shadow:
+      0 0 0 4px rgb(15 118 110 / 0.25),
+      0 2px 6px rgb(15 23 42 / 0.25);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .price-pin {
+      transition: none;
+    }
+  }
+}

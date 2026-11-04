@@ -1,0 +1,22 @@
+name: propmap
+
+# Local development + test database. Production uses Neon.
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: propmap
+      POSTGRES_PASSWORD: propmap
+      POSTGRES_DB: propmap
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/create-test-db.sql:/docker-entrypoint-initdb.d/create-test-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U propmap"]
+      interval: 2s
+      retries: 15
+
+volumes:
+  pgdata:

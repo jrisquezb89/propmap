@@ -1,0 +1,36 @@
+# Render Blueprint: https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: propmap-api
+    runtime: docker
+    plan: free
+    # Same region as the Neon database (AWS us-east-2) to keep query latency low.
+    region: ohio
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/health
+    autoDeploy: true
+    buildFilter:
+      paths:
+        - backend/**
+    envVars:
+      # Secrets are entered in the Render dashboard, never committed.
+      - key: APP_KEY # php artisan key:generate --show
+        sync: false
+      - key: DB_URL # Neon *pooled* connection string, with ?sslmode=require
+        sync: false
+      - key: FRONTEND_URLS # e.g. https://propmap.vercel.app
+        sync: false
+      - key: FRONTEND_URL_PATTERN # optional, for Vercel preview URLs
+        sync: false
+      - key: APP_URL
+        sync: false
+      - key: DB_CONNECTION
+        value: pgsql
+      - key: CACHE_STORE
+        value: file
+      - key: SESSION_DRIVER
+        value: array
+      - key: QUEUE_CONNECTION
+        value: sync
