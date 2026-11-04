@@ -2,6 +2,10 @@
 
 Property search on a map: filter Miami listings by price, bedrooms and type, and see only what's inside the current map view.
 
+**Live demo:** [propmap-alpha.vercel.app](https://propmap-alpha.vercel.app) · **API:** [propmap-api-97jr.onrender.com/api/properties](https://propmap-api-97jr.onrender.com/api/properties?per_page=5)
+
+> The API runs on Render's free tier and sleeps when idle, so the first visit can take up to a minute while it wakes up. The app shows a "Waking up the server…" state while that happens.
+
 | Layer | Stack |
 |---|---|
 | Backend (`/backend`) | Laravel 13, PHP 8.5, PostgreSQL (Neon), FrankenPHP, Docker on Render |
