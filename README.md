@@ -7,7 +7,7 @@ Property search on a map: filter Miami listings by price, bedrooms and type, and
 | Backend (`/backend`) | Laravel 13, PHP 8.5, PostgreSQL (Neon), FrankenPHP, Docker on Render |
 | Frontend (`/frontend`) | Vue 3, TypeScript, Vite, Pinia, Vue Router, Tailwind v4, Google Maps (Advanced Markers + clustering), on Vercel |
 
-![backend CI](https://github.com/OWNER/propmap/actions/workflows/backend.yml/badge.svg)
+![backend CI](https://github.com/jrisquezb89/propmap/actions/workflows/backend.yml/badge.svg)
 
 ## API
 
