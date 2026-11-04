@@ -1,89 +1,134 @@
 # PropMap
 
-Property search on a map: filter Miami listings by price, bedrooms and type, and see only what's inside the current map view.
+Search Miami homes on a map: pan, zoom and filter, and the list updates to show only the listings in view.
 
-**Live demo:** [propmap-alpha.vercel.app](https://propmap-alpha.vercel.app) � **API:** [propmap-api-97jr.onrender.com/api/properties](https://propmap-api-97jr.onrender.com/api/properties?per_page=5)
+**[Live demo](https://propmap-alpha.vercel.app)** · [API sample](https://propmap-api-97jr.onrender.com/api/properties?per_page=5) · [Backend CI](https://github.com/jrisquezb89/propmap/actions/workflows/backend.yml)
 
-> The API runs on Render's free tier and sleeps when idle, so the first visit can take up to a minute while it wakes up. The app shows a "Waking up the server�" state while that happens.
+> The API runs on a free tier that sleeps when idle, so the first visit can take up to a minute. The app shows a "Waking up the server…" state instead of a blank page.
 
-| Layer | Stack |
+<!-- Demo recording: add docs/demo.gif -->
+![PropMap demo: panning the map updates the results list, filters sync to the URL](docs/demo.gif)
+
+## Features
+
+- **Map search.** Results follow the map: when you stop panning or zooming, the app fetches the listings inside the visible area.
+- **Clustered price pins.** Google Maps Advanced Markers show each price. Nearby markers group into clusters when zoomed out.
+- **Filters that live in the URL.** Price range, minimum bedrooms and property type are part of the URL, along with the map position. A search can be shared, bookmarked, and survives a reload; the browser's Back button undoes the last filter change.
+- **List and map in sync.** Hovering a card highlights its pin. Clicking a pin scrolls to its card.
+- **Property detail page** with photos, facts and a small map.
+- **Cold-start handling.** If the server is asleep, the app shows a friendly waiting message and placeholder cards, and keeps retrying. Errors and empty results each have their own clear message.
+- **Responsive.** List and map sit side by side on desktop. On mobile there's a List/Map toggle, and tapping a pin shows a compact preview.
+- **Light and dark themes**, including Google's dark map style. The app follows the system setting by default.
+- **Accessible.** Keyboard-focusable markers, screen-reader announcements of result counts, focus management between pages, and support for reduced motion.
+
+## Tech stack
+
+| Layer | Technology |
 |---|---|
-| Backend (`/backend`) | Laravel 13, PHP 8.5, PostgreSQL (Neon), FrankenPHP, Docker on Render |
-| Frontend (`/frontend`) | Vue 3, TypeScript, Vite, Pinia, Vue Router, Tailwind v4, Google Maps (Advanced Markers + clustering), on Vercel |
+| Frontend | Vue 3, TypeScript, Vite, Pinia, Vue Router, Tailwind CSS v4 |
+| Maps | Google Maps JavaScript API with Advanced Markers and a Map ID, `@googlemaps/markerclusterer` |
+| Backend | Laravel 13 (PHP 8.5), API only, with API Resources and Form Request validation |
+| Database | PostgreSQL on Neon (serverless) |
+| Hosting | Vercel (frontend), Render free tier with Docker and FrankenPHP (API) |
+| Testing & CI | PHPUnit feature tests against real Postgres, Vitest unit tests, GitHub Actions, Laravel Pint |
 
-![backend CI](https://github.com/jrisquezb89/propmap/actions/workflows/backend.yml/badge.svg)
+## Architecture
 
-## API
+```mermaid
+flowchart LR
+    B([Browser])
+    V["Vercel<br/>Vue 3 single-page app"]
+    R["Render<br/>Laravel API in Docker"]
+    N[("Neon<br/>PostgreSQL")]
+    G["Google Maps Platform<br/>Maps JS API + tiles"]
 
-Base URL: `http://localhost:8000/api` locally.
-
-### `GET /api/properties`
-
-Paginated list, newest listings first.
-
-| Param | Type | Meaning |
-|---|---|---|
-| `min_price`, `max_price` | integer (USD) | Inclusive price range |
-| `bedrooms` | integer | **At least** N bedrooms ("3+") |
-| `type` | `house` \| `condo` \| `townhouse` | Property type |
-| `north`, `south`, `east`, `west` | decimal degrees | Map bounding box. All four or none; edges inclusive |
-| `per_page` | 1–100 (default 20) | Page size |
-| `page` | integer | Page number |
-
-```bash
-# Condos up to $1M in the current map view (roughly Brickell)
-curl "localhost:8000/api/properties?type=condo&max_price=1000000&north=25.77&south=25.75&east=-80.19&west=-80.205"
+    B -- "loads the app" --> V
+    B -- "JSON over HTTPS (CORS)" --> R
+    R -- "pooled connection, TLS" --> N
+    B -- "map script and tiles" --> G
 ```
 
-```jsonc
-{
-  "data": [{
-    "id": 38,
-    "title": "Bright Studio Condo in Brickell",
-    "price": 530000, "bedrooms": 0, "bathrooms": 1, "sqft": 590,
-    "type": "condo",
-    "address": "2212 Brickell Bay Dr, Unit 2206, Miami, FL 33131",
-    "neighborhood": "Brickell",
-    "lat": 25.7557952, "lng": -80.1971007,
-    "image_url": "https://images.unsplash.com/photo-...",
-    "listed_at": "2026-10-24T19:38:00+00:00",
-    "description": "..."
-  }],
-  "links": { "first": "...", "last": "...", "prev": null, "next": "...&page=2" },
-  "meta": { "current_page": 1, "last_page": 17, "per_page": 2, "total": 34 }
-}
-```
+- **Vercel only serves static files.** The browser calls the API on Render directly. The API only answers CORS requests from origins listed in an environment variable.
+- **The API is a single Docker container.** It runs migrations and seeds the demo data on boot. It's in the same AWS region as the Neon database (US East, Ohio) to keep query latency low.
+- **Google Maps loads in the browser.** The API never talks to Google.
 
-Invalid input returns `422` with per-field `errors`.
+## Technical decisions
 
-### `GET /api/properties/{id}`
+**1. Map search on indexed `lat`/`lng` columns instead of PostGIS.**
+A map viewport is a rectangle, so the query is two range conditions on latitude and longitude. A composite B-tree index on `(lat, lng)` handles that well at this scale, and there are also indexes on `price` and `listed_at` (the default sort). It needs no database extension and is easy to test. If I needed radius search, polygons or millions of rows, I'd move to a PostGIS `geography` column with a GiST index (Neon supports it).
+→ [migration](backend/database/migrations/2026_11_03_000000_create_properties_table.php) · [query scopes](backend/app/Models/Property.php)
 
-A single property (`{ "data": { ... } }`), or `404`.
+**2. Debounced, cancellable map fetching.**
+- The app fetches only after the map's `idle` event (the camera stopped moving), debounced by 300 ms.
+- Bounds are rounded, so tiny camera jitter doesn't trigger a request.
+- Each new search cancels the previous request with an `AbortController`, so a slow response for an old view can never overwrite the current results. A unit test covers this.
 
-### `GET /api/health`
+→ [PropertyMap.vue](frontend/src/components/map/PropertyMap.vue) · [search store](frontend/src/stores/search.ts)
 
-`{ "status": "ok" }`. It doesn't touch the database, so it answers quickly. The frontend calls it on page load to wake the free-tier server.
+**3. The URL is the single source of truth for filters.**
+Filter controls write to the URL, and everything else reads from it, so data only flows one way. Sharing and reloading need no extra code.
+- Filter changes add a browser-history entry, so Back undoes them.
+- Map moves replace the current entry instead, so panning doesn't fill the history.
+- Parsing is a pure function, and invalid values such as `?bedrooms=abc` are dropped instead of breaking the page.
+
+→ [lib/filters.ts](frontend/src/lib/filters.ts) · [useUrlFilters.ts](frontend/src/composables/useUrlFilters.ts)
+
+**4. A cold-start strategy instead of a blank screen.**
+The free tier sleeps after 15 minutes idle. On load, the app calls a health endpoint that deliberately skips the database:
+- If it answers within 2 seconds, the user sees nothing special.
+- Otherwise a "Waking up the server…" banner and placeholder cards appear. The app keeps retrying with increasing delays and gives up after 90 seconds with a Retry button.
+- On the server side, migrations and seeding run on every boot but are safe to repeat, because the free tier has no pre-deploy step.
+
+The client-side state machine is unit-tested with fake timers.
+→ [server store](frontend/src/stores/server.ts) · [entrypoint](backend/docker/entrypoint.sh)
+
+**5. Cost controls on Google Maps.**
+A Maps key used in the browser is public by design, so it can't be hidden; it has to be restricted instead. Mine is restricted by HTTP referrer (the live domain and localhost) and to the Maps JavaScript API only, with a budget alert. The code also avoids paying for unnecessary map loads:
+- The Maps script loads once per visit.
+- The mobile List/Map toggle hides the map rather than destroying it. That also keeps its size, so the map area it reports stays correct.
+- Switching themes is the only action that rebuilds the map, because Google only accepts the color scheme when a map is created.
+
+→ [useGoogleMaps.ts](frontend/src/composables/useGoogleMaps.ts) · [SearchView.vue](frontend/src/views/SearchView.vue)
+
+**6. Google's map objects stay outside Vue's reactivity.**
+The map, the markers and the clusterer are stored in plain variables. Wrapping them in Vue's reactive proxies would slow them down and can break Google's internal checks. Markers are kept in a lookup table by property ID, and new results are compared against it so only changed markers are added or removed. Highlighting a pin toggles a CSS class on that one element, so hovering a card never re-renders the map.
+→ [PropertyMap.vue](frontend/src/components/map/PropertyMap.vue)
+
+<details>
+<summary>More details</summary>
+
+- **Realistic seed data.** Each Miami neighborhood is a hand-drawn polygon, and listings are only placed at points inside it, so none land in Biscayne Bay. Prices are derived from each neighborhood's price per square foot. The random seed is fixed, so every environment gets the same 400 listings. → [MiamiNeighborhoods.php](backend/app/Support/MiamiNeighborhoods.php)
+- **Data types.** Money is stored as integer dollars, never floats. Property type is a string column with a database constraint, mapped to a PHP enum.
+- **Production container.** FrankenPHP (PHP and the Caddy web server in one binary) runs as a single process, which suits Render's one-container free tier. It runs as a non-root user. → [Dockerfile](backend/Dockerfile)
+- **Tests run against Postgres, not SQLite**, both locally and in CI, so they exercise the same database engine as production.
+- **Dark theme.** Colors are defined as semantic tokens (`bg-surface`, `text-fg`), so the dark theme is one block of CSS. A small script applies the saved theme before the first paint, so there's no white flash.
+
+</details>
+
+## How I used AI
+
+I built PropMap with [Claude Code](https://claude.com/claude-code), Anthropic's AI coding agent.
+
+- **What I decided:** the product and its features, the stack (Vue 3 and Laravel), and the architecture and hosting (Neon, Render, Vercel, Google Maps).
+- **How each phase went:** I asked for a plan before any code was written, reviewed it, and made the calls. Examples: keeping the map position in the URL; showing up to 100 results with "Load more" instead of adding a separate endpoint for map markers; the database region; keeping the repo private until launch; adding a dark theme partway through.
+- **Who wrote the code:** Claude Code wrote most of the code, the tests and the deployment config, working from those plans. I reviewed the work, steered it, and asked for changes when something didn't fit.
+- **How it was verified:** automated tests run in CI, and every main flow was checked in a real browser, both locally and on the live site.
+- **What surfaced at deploy:** several issues appeared only when deploying. FrankenPHP failed to start on Render, the database connection picked up the wrong port, and pagination links came back as `http://` behind Render's proxy. Each was reproduced, fixed, and covered by a test or a local check before redeploying.
 
 ## Running locally
 
-Requirements: PHP 8.3+ with `pdo_pgsql`, Composer, Docker.
+**Requirements:** PHP 8.3+ with the `pdo_pgsql` extension, Composer, Docker, and Node.js 20.19+.
+
+### Backend
 
 ```bash
 cd backend
 composer install
-cp .env.example .env && php artisan key:generate
-docker compose up -d           # Postgres on localhost:5433 (+ a propmap_test database)
-php artisan migrate --seed     # 400 Miami listings
-php artisan serve              # http://localhost:8000
-php artisan test               # feature tests against Postgres
-```
-
-Running the production image locally:
-
-```bash
-docker build -t propmap-api backend
-docker run -p 10000:10000 -e PORT=10000 -e APP_KEY=base64:... \
-  -e DB_URL="postgresql://propmap:propmap@host.docker.internal:5433/propmap?sslmode=disable" propmap-api
+cp .env.example .env
+php artisan key:generate
+docker compose up -d          # local Postgres on port 5433, plus a propmap_test database
+php artisan migrate --seed    # creates the schema and 400 Miami listings
+php artisan serve             # http://localhost:8000
 ```
 
 ### Frontend
@@ -91,54 +136,83 @@ docker run -p 10000:10000 -e PORT=10000 -e APP_KEY=base64:... \
 ```bash
 cd frontend
 npm install
-cp .env.example .env   # VITE_API_URL, VITE_GOOGLE_MAPS_API_KEY, VITE_GOOGLE_MAPS_MAP_ID
-npm run dev            # http://localhost:5173
-npm test               # Vitest unit tests
-npm run build          # type-check + production build
+cp .env.example .env          # then fill in the values below
+npm run dev                   # http://localhost:5173
 ```
 
-Without a Maps key the app still works: the list searches all of Miami and the map shows a "Map unavailable" panel.
+Without a Google Maps key, the app still works: the list shows all of Miami and the map area shows a "Map unavailable" message.
 
-## Deploying
+### Environment variables
 
+Real values go in `.env` files, which are gitignored, or in your hosting dashboard. Never commit them.
 
-1. **Neon**: create a project in AWS us-east-2 and copy the **pooled** connection string.
-2. **Render**: New → Blueprint → this repo. `render.yaml` sets up one free Docker web service. Set these env vars in the dashboard:
-   - `APP_KEY`: from `php artisan key:generate --show`
-   - `DB_URL`: the Neon pooled URL, with `?sslmode=require`
-   - `FRONTEND_URLS`: the Vercel domain, comma-separated if there's more than one
-   - `APP_URL`
-3. **Vercel**: import the repo with root directory `frontend`, and set the three `VITE_*` env vars. `vercel.json` rewrites every path to `index.html`, so deep links like `/properties/38` work. Then add the Vercel domain to `FRONTEND_URLS` on Render.
-4. **Google Cloud**: restrict the Maps key to your HTTP referrers (`localhost:5173`, the Vercel domain) and to the Maps JavaScript API, and set a budget alert. The key is public by design (it ships in the JS bundle); restrictions are what secure it.
-5. On every boot the container caches config, runs migrations, and seeds only if the table is empty.
+**Backend** (`backend/.env`)
 
-Secrets live only in `.env` (gitignored) and in the Render dashboard.
+| Variable | Purpose |
+|---|---|
+| `APP_KEY` | Laravel encryption key. Generate one with `php artisan key:generate --show` |
+| `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD` | Local Postgres from `compose.yaml` (defaults in `.env.example`) |
+| `DB_URL` | Production connection string (Neon, pooled, with `sslmode=require`). When set, it takes priority over the `DB_*` values above |
+| `FRONTEND_URLS` | Comma-separated origins allowed by CORS, e.g. `http://localhost:5173,https://your-app.vercel.app` |
+| `FRONTEND_URL_PATTERN` | Optional regular expression for extra allowed origins, e.g. Vercel preview URLs |
 
-## Design decisions
+**Frontend** (`frontend/.env`)
 
-- **Bounding box on plain `lat`/`lng` columns with B-tree indexes, not PostGIS.** A map viewport query is two range conditions. A composite `(lat, lng)` index narrows by latitude and filters longitude within that range, which is plenty at this scale and needs no extension. For radius search, polygons or millions of rows I'd switch to a PostGIS `geography(Point)` column with a GiST index (Neon supports it).
-- **Money is an integer number of dollars.** Floats are never used for money. Listing prices have no cents.
-- **`type` is a string column with a CHECK constraint, cast to a PHP backed enum.** The database guarantees integrity, PHP gets type safety, and changing the allowed values later doesn't involve Postgres `ALTER TYPE`.
-- **Thin controller.** A Form Request validates input (including cross-field rules like min ≤ max and south ≤ north), chainable model scopes apply each filter, and an API Resource fixes the JSON contract regardless of the schema.
-- **Offset pagination** because the UI shows totals and page numbers. Cursor pagination would suit an infinite feed on a large table. Results are sorted by `listed_at DESC, id DESC`, so equal timestamps can't make items jump between pages.
-- **Realistic seed data.** Each neighborhood is a hand-drawn polygon, kept slightly inland. Points are generated by rejection sampling with a point-in-polygon test, so no listing lands in Biscayne Bay. Price = sqft × the neighborhood's $/sqft × a factor for the property type × ±15% noise. The Faker seed is fixed, so every environment gets the same 400 listings.
-- **Tests run against Postgres, not SQLite**, locally and in CI, so they exercise the same engine as production.
-- **FrankenPHP in a single container.** Render's free tier runs one process on `$PORT`. FrankenPHP is PHP plus Caddy in one binary, so there's no nginx + php-fpm + supervisor. The Docker build has two stages, and Composer dependencies are installed in their own cached layer.
-- **Idempotent boot tasks.** The free tier has no pre-deploy hook or shell, so the entrypoint runs `migrate --force` and `propmap:seed-if-empty`. Both are safe to run on every restart.
-- **Cold starts.** Render's free tier sleeps after 15 minutes idle, and Neon scales to zero. The health endpoint is used to wake the server early, and both services run in the same region.
+| Variable | Purpose |
+|---|---|
+| `VITE_API_URL` | API base URL, e.g. `http://localhost:8000/api` |
+| `VITE_GOOGLE_MAPS_API_KEY` | Browser key for the Maps JavaScript API. Restrict it by HTTP referrer |
+| `VITE_GOOGLE_MAPS_MAP_ID` | Map ID (JavaScript, vector type), required for Advanced Markers |
 
-## Frontend design decisions
+### Tests
 
-- **The URL is the single source of truth for search state.** Filter controls write to the URL and everything else reads from it, so data flows one way and there are no sync loops. Shared links and reloads just work. Filter changes use `router.push`, so Back undoes them; map moves use `router.replace`, so panning doesn't flood the history. Parsing is a pure, unit-tested function that drops invalid values.
-- **Google Maps objects are never reactive.** The map, markers and clusterer live in plain variables, not Vue refs: deep proxies around Google's objects are slow and can break their identity checks. Markers are kept in a `Map<id, marker>`, and new results are diffed against it (add/remove only what changed). Hover and selection toggle a CSS class on one pin.
-- **Stale responses can't win.** Each search aborts the previous request with an `AbortController`, so a slow response for an old viewport never overwrites the current one. There's a test for this.
-- **List and markers stay one-to-one.** The map shows exactly the results in the list (up to 100, the API cap), with a "Showing 100 of 312" notice and Load more. Clustering keeps zoomed-out views readable.
-- **Cold-start state machine.** Most loads answer within 2 seconds and show no message. Otherwise a "Waking up the server�" banner and skeleton cards appear, with retries and backoff for up to 90 seconds, then an error with Retry. This is unit-tested with fake timers.
-- **Mobile toggle keeps both views mounted.** The hidden one uses `visibility: hidden` + `inert`, not `display: none`: a `display:none` map has zero size (it would report a degenerate viewport), and recreating it costs a new map load.
-- **Dark theme via semantic tokens.** Components use tokens like `bg-surface` and `text-fg`, which change under a `.dark` class, so the dark theme is one block of CSS. An inline script applies the saved theme before first paint (no flash). Google's `colorScheme` can only be set when a map is created, so a theme switch remounts the map, which reopens at the same place because the camera lives in the URL.
-- **Accessibility.** Cards are real links (stretched-link pattern), markers are keyboard-focusable with descriptive labels, an `aria-live` region announces result counts, focus moves to the page heading on navigation, there's a skip link, price uses native selects (dual sliders are hard to make accessible), and animations respect `prefers-reduced-motion`.
+```bash
+# Backend: feature tests against Postgres (start it first with docker compose up -d)
+cd backend
+php artisan test
+vendor/bin/pint --test        # code style
+
+# Frontend: unit tests, type-check and production build
+cd frontend
+npm test
+npm run typecheck
+npm run build
+```
+
+Backend tests and the code-style check run in GitHub Actions on every push.
+
+## API reference
+
+| Endpoint | Description |
+|---|---|
+| `GET /api/properties` | Paginated listings, newest first. Filters: `min_price`, `max_price`, `bedrooms` (minimum), `type` (`house`, `condo`, `townhouse`), and a map area as `north`, `south`, `east`, `west` (all four or none). `per_page` goes up to 100 |
+| `GET /api/properties/{id}` | One property, or `404` |
+| `GET /api/health` | Quick health check that skips the database. The frontend calls it to wake the server |
+
+Invalid input returns `422` with an error message for each field. Example:
+
+```bash
+curl "https://propmap-api-97jr.onrender.com/api/properties?type=condo&max_price=1000000&north=25.77&south=25.75&east=-80.19&west=-80.205"
+```
+
+## Deployment
+
+- **API:** [`render.yaml`](render.yaml) defines the Render service. Secrets (`APP_KEY`, `DB_URL`, `FRONTEND_URLS`) are set in the Render dashboard.
+- **Frontend:** Vercel builds the `frontend/` folder. [`vercel.json`](frontend/vercel.json) sends every path to the app, so direct links like `/properties/22` work.
+- **Database:** Neon, in the same region as the API.
+
+## Project structure
+
+```
+propmap/
+├── backend/            Laravel API: models, Form Requests, API Resources, seeders, feature tests, Dockerfile
+├── frontend/           Vue app: views, components, Pinia stores, composables, unit tests
+├── render.yaml         Render configuration for the API
+└── .github/workflows/  CI for the backend
+```
 
 ## Known limitations
 
-- Bounding boxes crossing the antimeridian (`west > east`) aren't supported. That can't happen for Miami.
-- Each response has at most 100 properties; the UI says so and offers Load more. Many more listings would call for server-side clustering.
+- A request returns at most 100 properties. The app says so and offers "Load more". A much larger dataset would call for clustering on the server.
+- Map areas that cross the international date line aren't supported, which can't happen for Miami.
+- Listings and photos are generated demo data, not real properties for sale.
